@@ -1,11 +1,16 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <random>
+// #include "SpawningBall.h"
 #include <SFML/Graphics.hpp>
 #include <SFML/Window.hpp>
 #include <SFML/System.hpp>
-// Position 2d
+#include <random>
+#include <cstdlib>
+
+using namespace std;
+
+
 struct Pos2d
 {
 	float x;
@@ -24,75 +29,79 @@ struct Acc2d
 	float y;
 };
 
-// Randomizer
-float rand(float min, float max) {
+// Random
+
+float random(float min, float max) {
 	 std::random_device rnddev;
 	 std::mt19937 gen(rnddev());
-	std::uniform_real_distribution<float> dist(min, max);
+	 std::uniform_real_distribution<float> dist(min, max);
 
 	return dist(gen);
 }
 
-using namespace std;
+
+
 
 // Constants
 const float a = 10.0f;
 const float pi = 3.14f;
-const Acc2d acc = { 0.0f, 60.0f };
+const Acc2d acc = { 0.0f, 120.0f };
+
+class SpawningBall
+{
+public:
+	sf::CircleShape ball;
+	sf::Color color;
+	float radius;
+	float distFromCenter;
+
+	Pos2d pos;
+
+	float initSpeed;
+	Vel2d initVel;
+
+	void initVariables(float x, float y, float speed, float ang)
+	{
+		this->color = sf::Color::Magenta;
+		this->radius = 20.f;
+		this->distFromCenter = 0;
+
+		// Spawn position
+		pos = { x, y };
+		// Spawn velocity - cos * speed and sin * speed
+		initSpeed = speed; // random(30.0f, 60.0f);
+		initVel = {
+			cos(ang) * initSpeed,
+			sin(ang) * initSpeed
+		};
+
+		ball.setFillColor(color);
+		ball.setRadius(radius);
+		ball.setOrigin(radius, radius);
+	}
+
+
+	SpawningBall(float x, float y, float speed, float ang)
+	{
+		initVariables(x, y, speed, ang);
+	}
+
+};
+
+
+
 
 // Main program
 int main()
 {
 	sf::RenderWindow window(sf::VideoMode(800, 800), "Week 9");
+	window.setFramerateLimit(60);
 
-	// Spawning circular area
-	sf::CircleShape spawningArea;
-	spawningArea.setRadius(10);
-	spawningArea.setOrigin(10, 10);
-	spawningArea.setFillColor(sf::Color::Magenta);
 	float x_center = 800.0f / 2;
 	float y_center = 800.0f / 2;
 
-	sf::CircleShape testball;
-	testball.setFillColor(sf::Color::Red);
-	testball.setRadius(100.f);
-	testball.setOrigin(100.f, 100.f);
-
 	// Creating balls
-	
-	int amountBalls = 50;
-	vector <Vel2d> spawnVelocities(amountBalls);
-	vector <Pos2d> spawnPositions(amountBalls);
-	vector <sf::CircleShape> circles(amountBalls);
-
-	for (int i = 0; i < amountBalls; i++)
-	{
-		circles[i].setFillColor(sf::Color::Green);
-		circles[i].setRadius(20.f);
-		circles[i].setOrigin(20.f, 20.f);
-	}
-
-	// Spawning
-	float distance = 100.0f;
-	for (int i = 0; i < amountBalls; i++)
-	{
-		float randomAng = rand(0.0f, 2.0f * pi);
-		float randomSpeed = rand(20.0f, 50.0f);
-		
-
-		// Initial position
-		spawnPositions.at(i) = {
-			x_center + distance * cos(randomAng),
-			y_center + distance * sin(randomAng)
-		};
-		circles.at(i).setPosition(spawnPositions.at(i).x, spawnPositions.at(i).y);
-		// Initial velocity
-		spawnVelocities[i] = {
-			cos(randomAng) * randomSpeed,
-			sin(randomAng) * randomSpeed
-		};
-	}
-	
+	vector<SpawningBall*> balls;
 
 	sf::Clock clock;
 	clock.restart();
@@ -102,6 +111,7 @@ int main()
 	while (window.isOpen())
 	{
 		sf::Event e;
+		
 
 		while (window.pollEvent(e))
 		{
@@ -113,35 +123,43 @@ int main()
 		// Time
 		float dt = clock.restart().asSeconds();
 		t += dt;
+		srand(t);
+		// dt/60 is time spent on one frame
 
-		// Changing variables
-		spawningArea.setPosition(x_center, y_center);
+		// Updating
 
-		// Position
-		for (int i = 0; i < amountBalls; i++)
+		// 1. Add 1 ball
+		balls.push_back(new SpawningBall(x_center, y_center, static_cast<float>(rand() % 5) + 20.0f, random(0.0f, 2.0f * pi)));
+		
+		// 2. Update the balls' pos
+		for (int i = 0; i < balls.size(); i++)
 		{
-			// pos_x = v_x_spawn * t
-			// pos_y = acc_y/2 * t^2 + v_y_spawn * t + pos_y_spawn
+		
+			balls[i]->pos.x += balls[i]->initVel.x * dt;
+			balls[i]->pos.y += acc.y * dt * dt + balls[i]->initVel.y * dt;
+			
 
-			float pos_x = spawnVelocities[i].x * t + spawnPositions[i].x;
-			float pos_y = acc.y/2 * t * t + spawnVelocities[i].y * t + spawnPositions[i].y;
+			// 3. Delete balls out of screen
+			if ((balls[i]->pos.x + balls[i]->radius) < 0 ||
+				(balls[i]->pos.x - balls[i]->radius) > window.getSize().x ||
+				(balls[i]->pos.y + balls[i]->radius) < 0 ||
+				(balls[i]->pos.y - balls[i]->radius) > window.getSize().y)
+			{
+				balls.erase(balls.begin() + i);
+			}
 
-
-
-			circles.at(i).setPosition(pos_x, pos_y);
 		}
 
 		window.clear();
 
-		window.draw(spawningArea);
-		for (int i = 0; i < amountBalls; i++)
+		// Drawing
+		for (int i = 0; i < balls.size(); i++)
 		{
-			
-			window.draw(circles.at(i));
+			balls[i]->ball.setPosition(balls[i]->pos.x, balls[i]->pos.y);
+			window.draw(balls[i]->ball);
 		}
 
-		window.draw(testball);
-		// window.draw(spawningArea);
+		// Rendering
 		window.display();
 
 	}
