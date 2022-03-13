@@ -11,39 +11,31 @@
 using namespace std;
 
 
-struct Pos2d
+struct Vec2
 {
 	float x;
 	float y;
 };
 
-struct Vel2d
-{
-	float x;
-	float y;
-};
-
-struct Acc2d
-{
-	float x;
-	float y;
-};
 
 // Random
 
-float random(float min, float max) {
+float random() {
 	static std::random_device rnddev;
 	static std::mt19937 gen(rnddev());
-	static std::uniform_real_distribution<float> dist(min, max);
+	static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
 	return dist(gen);
 }
-float random2(float min, float max) {
-	static std::random_device rnddev;
-	static std::mt19937 gen(rnddev());
-	static std::uniform_real_distribution<float> dist(min, max);
 
-	return dist(gen);
+Vec2 radialAcc(float speed, float ang)
+{
+	Vec2 acc = {
+		cos(ang) * -speed,
+		sin(ang) * -speed
+	};
+
+	return acc;
 }
 
 
@@ -52,7 +44,9 @@ float random2(float min, float max) {
 // Constants
 const float a = 10.0f;
 const float pi = 3.14f;
-const Acc2d acc = { 0.0f, 5.0f };
+const Vec2 gravity = { 0.0f, 8.0f };
+const Vec2 drag = { -100.0f, 0.0f };
+
 
 class SpawningBall
 {
@@ -62,19 +56,24 @@ public:
 	float radius;
 	float distFromCenter;
 
-	Pos2d pos;
+	Vec2 totalAcc;
+	Vec2 pos;
 
 	float initSpeed;
-	Vel2d initVel;
+	Vec2 initVel;
 	float timeSinceSpawn;
 
-	void initVariables(float x, float y, float speed, float ang)
+	float velAng;
+
+	void initVariables(float x, float y, float speed, float ang, Vec2 acc)
 	{
 		this->color = sf::Color::Green;
 		this->radius = 10.f;
-		this->distFromCenter = 0;
+		this->distFromCenter = 100.0f;
 		this->timeSinceSpawn = 0;
-
+		// Total acceleration
+		this->totalAcc = acc;
+		this->velAng = ang;
 		// Spawn position
 		pos = { x, y };
 		// Spawn velocity - cos * speed and sin * speed
@@ -90,9 +89,9 @@ public:
 	}
 
 
-	SpawningBall(float x, float y, float speed, float ang)
+	SpawningBall(float x, float y, float speed, float ang, Vec2 acc)
 	{
-		initVariables(x, y, speed, ang);
+		initVariables(x, y, speed, ang, acc);
 	}
 
 };
@@ -116,6 +115,8 @@ int main()
 	clock.restart();
 	float t = 0;
 
+	int round = 1;
+
 	// Game loop
 	while (window.isOpen())
 	{
@@ -128,6 +129,13 @@ int main()
 			{
 				window.close();
 			}
+
+			if (e.key.code == sf::Keyboard::Space && e.type == e.KeyReleased)
+			{
+				round++;
+				if (round == 4)
+					round = 1;
+			}
 		}
 		// Time
 		float dt = clock.restart().asSeconds();
@@ -135,52 +143,79 @@ int main()
 		// srand(t);
 		// dt/60 is time spent on one frame
 
+		
+
 		// Updating
 
-		// 1. Add 1 ball
-		balls.push_back(new SpawningBall(x_center, y_center, random2(1.f, 10.f), -random(pi/2.5f, pi - pi/2.5f)));
-		balls.push_back(new SpawningBall(x_center, y_center, random2(1.f, 10.f), -random(pi / 2.5f, pi - pi / 2.5f)));
-		balls.push_back(new SpawningBall(x_center, y_center, random2(1.f, 10.f), -random(pi / 2.5f, pi - pi / 2.5f)));
+		window.clear();
+		// 1. Add 1 ball at a time
+
+		if (round == 1)
+			balls.push_back(new SpawningBall(x_center, y_center, random() * 8 + 1, -(random() * pi/3 + pi/3), gravity));
+		if (round == 2)
+			balls.push_back(new SpawningBall(x_center, y_center, random() * 8 + 1, -(random() * pi / 3 + pi / 3), {gravity.x + drag.x, gravity.y + drag.y}));
+		if (round == 3)
+		{
+			
+			float velAng = random() * 2 * pi;
+			balls.push_back(new SpawningBall(x_center + 100.f*cos(velAng), y_center + 100.f * sin(velAng), 8.0f, velAng, { -cos(velAng) * 10.0f,-sin(velAng) * 10.0f }));
+		}
 		
+		
+
 		// 2. Update the balls' pos
 		for (int i = 0; i < balls.size(); i++)
-		{
+		{ 
 			balls[i]->timeSinceSpawn += dt;
-			balls[i]->pos.x = balls[i]->pos.x + balls[i]->initVel.x * balls[i]->timeSinceSpawn;
-			balls[i]->pos.y = balls[i]->pos.y + acc.y/2 * balls[i]->timeSinceSpawn 
+			balls[i]->pos.x = balls[i]->pos.x + balls[i]->totalAcc.x / 2 * balls[i]->timeSinceSpawn
+				* balls[i]->timeSinceSpawn + balls[i]->initVel.x 
+				* balls[i]->timeSinceSpawn;
+			balls[i]->pos.y = balls[i]->pos.y + balls[i]->totalAcc.y / 2 * balls[i]->timeSinceSpawn
 				* balls[i]->timeSinceSpawn + balls[i]->initVel.y
 				* balls[i]->timeSinceSpawn;
 
-			balls[i]->ball.setPosition(balls[i]->pos.x, balls[i]->pos.y);
 
-			cout << balls[i]->initSpeed << endl;
-		}
-			
-		// 3. Delete balls out of screen
-		for (int i = 0; i < balls.size(); i++)
-		{
+			// cout << balls.size() << endl;
+			// 3. Delete balls out of screen
 
-			if ((balls[i]->pos.x + balls[i]->radius) < 0 ||
-				(balls[i]->pos.x - balls[i]->radius) > window.getSize().x ||
-				(balls[i]->pos.y + balls[i]->radius) < 0 ||
-				(balls[i]->pos.y - balls[i]->radius) > window.getSize().y)
+			if (round == 1 || round == 2)
 			{
-				delete balls[i];
-				balls.erase(balls.begin() + i);
+				if ((balls[i]->pos.x + balls[i]->radius) < 0 ||
+					(balls[i]->pos.x - balls[i]->radius) > window.getSize().x ||
+					(balls[i]->pos.y - balls[i]->radius) > window.getSize().y)
+				{
+					delete balls[i];
+					balls.erase(balls.begin() + i);
+				}
+			}
+			else if (round == 3)
+			{
+				if (balls[i]->velAng >= 0 && balls[i]->velAng < pi)
+				{
+					if (balls[i]->pos.y < 400.0f)
+					{
+						delete balls[i];
+						balls.erase(balls.begin() + i);
+					}
+				}
+				else
+				{
+					if (balls[i]->pos.y > 400.0f)
+					{
+						delete balls[i];
+						balls.erase(balls.begin() + i);
+					}
+				}
 			}
 		}
-
-
-		// cout << balls.size() << endl;
-		window.clear();
-
+			
 		// Drawing
 		for (int i = 0; i < balls.size(); i++)
 		{
+			balls[i]->ball.setPosition(balls[i]->pos.x, balls[i]->pos.y);
 			window.draw(balls[i]->ball);
 		}
 
-		// Rendering
 		window.display();
 
 	}
